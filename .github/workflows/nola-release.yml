@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Nola version (MAJOR.MINOR.PATCH, e.g. 2.3.1)"
+        description: "Numeric version, e.g. 2.3.1 (for beta, use the prerelease checkbox below)"
         required: true
         type: string
       prerelease:

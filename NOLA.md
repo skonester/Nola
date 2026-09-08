@@ -13,6 +13,8 @@ so it does not create recurring rename/version conflicts when syncing upstream.
 3. Enter an unused numeric version such as `2.3.1`. Leave **Save as a draft**
    unchecked to publish, or check it to review the release first. **Mark as a
    prerelease** excludes the release from the normal in-app update channel.
+   For a beta release, enter a numeric version such as `2.3.1` and check
+   **Mark as a prerelease**; do not enter `beta` in the version field.
 4. After all three builds succeed, the workflow uploads these assets to this
    repository's GitHub Releases under `nola-v2.3.1`:
 

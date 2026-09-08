@@ -72,6 +72,8 @@ test("check mode and invalid inputs never modify the checkout", (t) => {
   const root = fixture(t);
   const before = snapshot(root);
   prepareNola({ root, version: "3.2.7", check: true });
+  assert.throws(() => prepareNola({ root, version: "beta", check: true }),
+    /received "beta".*numeric version such as 2\.3\.1.*Mark as a prerelease/);
   for (const version of ["v1.2.3", "1.2", "01.2.3", "1.2.3-beta", "65536.0.0", "1.2.3'; exit 0"]) {
     assert.throws(() => prepareNola({ root, version }), /Version must/);
   }

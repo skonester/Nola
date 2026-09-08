@@ -16,7 +16,7 @@ export function prepareNola({ root = projectRoot, version, repository, check = f
   // Use a numeric version supported by every installer; prerelease is a release flag.
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)
       || version.split(".").some((part) => Number(part) > 65535)) {
-    throw new Error("Version must be MAJOR.MINOR.PATCH, with each number between 0 and 65535.");
+    throw new Error(`Version must be MAJOR.MINOR.PATCH, with each number between 0 and 65535; received ${JSON.stringify(version)}. Enter a numeric version such as 2.3.1. For a beta release, enable "Mark as a prerelease" in the workflow instead of entering "beta" as the version.`);
   }
   if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(repository)
       || repository.toLowerCase() === "chwair/magnolia") {
