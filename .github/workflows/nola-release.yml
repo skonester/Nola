@@ -1,0 +1,218 @@
+name: Nola Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Nola version (MAJOR.MINOR.PATCH, e.g. 2.3.1)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as a prerelease"
+        default: false
+        type: boolean
+      draft:
+        description: "Save as a draft instead of publishing"
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nola-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  NOLA_VERSION: ${{ inputs.version }}
+  NOLA_REPOSITORY: ${{ github.repository }}
+
+jobs:
+  validate:
+    name: Validate Nola release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/prepare_nola.mjs --check
+      - run: node --test scripts/prepare_nola.test.mjs
+      - name: Require an unused release tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = `nola-v${process.env.NOLA_VERSION}`;
+            try {
+              await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` });
+              core.setFailed(`${tag} already exists. Choose a new Nola version.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+  build-windows:
+    name: Windows x64 (NSIS)
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: nola-windows
+      - name: Apply Nola branding and version to this checkout
+        run: node scripts/prepare_nola.mjs
+      - run: npm ci
+      - name: Add Tauri CLI to PATH
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\node_modules\.bin"
+      - name: Set up mpv runtime libraries
+        run: node scripts/setup_runtime_libs_windows.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build NSIS installer
+        run: node scripts/run_tauri.mjs build --bundles nsis
+      - name: Bundle runtime libraries
+        run: node scripts/bundle_runtime_libs_windows.mjs --profile release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nola-windows-nsis
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: macOS Apple Silicon (.app zip)
+    needs: validate
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: nola-macos
+      - name: Apply Nola branding and version to this checkout
+        run: node scripts/prepare_nola.mjs
+      - run: npm ci
+      - name: Add Tauri CLI to PATH
+        run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Set up mpv runtime libraries
+        run: bash scripts/setup_runtime_libs_macos.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build .app
+        run: node scripts/run_tauri.mjs build --bundles app --target aarch64-apple-darwin
+      - name: Embed runtime libraries
+        run: |
+          bash scripts/bundle_runtime_libs_macos.sh \
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Nola.app \
+            --skip-sign
+      - name: Zip .app
+        working-directory: src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+        run: zip -r --symlinks "Nola_${NOLA_VERSION}_arm64-macos.zip" Nola.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nola-macos-zip
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Nola_${{ inputs.version }}_arm64-macos.zip
+          if-no-files-found: error
+
+  build-linux:
+    name: Linux x64 (.deb)
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: nola-linux
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libssl-dev pkg-config
+      - name: Apply Nola branding and version to this checkout
+        run: node scripts/prepare_nola.mjs
+      - run: npm ci
+      - name: Set up mpv runtime libraries
+        run: bash scripts/setup_runtime_libs_linux.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache tauri-cli
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/tauri
+            ~/.cargo/bin/cargo-tauri
+          key: nola-tauri-cli-v2-${{ runner.os }}
+      - name: Install tauri-cli
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Prepare runtime libraries
+        run: |
+          node scripts/sync_runtime_libs.mjs --platform linux --check
+          node scripts/apply_runtime_libs.mjs --platform linux --mode bundle --profile release
+      - name: Build .deb
+        run: cargo tauri build --bundles deb
+      - name: Bundle runtime libraries
+        run: node scripts/bundle_runtime_libs_linux.mjs --profile release --strict
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nola-linux-deb
+          path: src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Publish Nola release
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nola-*
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nola-v${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Nola v${{ inputs.version }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/nola-windows-nsis/*.exe
+            artifacts/nola-macos-zip/*.zip
+            artifacts/nola-linux-deb/*.deb
