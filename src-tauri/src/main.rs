@@ -18,6 +18,7 @@ mod subtitle_packs;
 mod anime_list;
 mod updater;
 mod extensions;
+mod live_channels;
 
 use extensions::ExtensionManager;
 use std::sync::{Arc, Mutex};
@@ -1108,6 +1109,10 @@ fn main() {
             subtitle_packs::get_subtitle_pack_coverage,
             subtitle_packs::remove_subtitle_pack_episode,
             subtitle_packs::clear_subtitle_pack,
+            live_channels::get_live_channels,
+            live_channels::add_live_source,
+            live_channels::refresh_live_source,
+            live_channels::remove_live_source,
             load_file,
             cycle_pause,
             seek_video,

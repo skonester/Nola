@@ -29,6 +29,12 @@
   export let mediaType = null;
   export let seasonNum = null;
   export let episodeNum = null;
+  // Live TV: a direct stream URL with no seekable timeline. `channels` is the
+  // list the channel was picked from, so the player can step through it.
+  export let live = false;
+  export let channelLogo = "";
+  export let channels = [];
+  export let channelIndex = -1;
 
   let loading = true;
   let loadingPhase = "initializing";
@@ -610,6 +616,37 @@
       loadingStatus.status = `${debridExt.manifest.debrid_name || debridExt.manifest.name}: ${error}`;
       loadingPhase = "error";
     }
+  }
+
+  async function startDirectStream() {
+    loading = true;
+    loadingPhase = "initializing";
+    loadingStatus.status = live ? "Tuning in..." : "Opening stream...";
+    loadingStatus.phaseProgress = 50;
+    try {
+      await invoke("load_file", { path: src });
+      // loading = false is set by the file_loaded mpv event listener
+    } catch (error) {
+      console.error("Failed to open stream:", error);
+      loadingStatus.status = `Could not open stream: ${error}`;
+      loadingPhase = "error";
+    }
+  }
+
+  function switchChannel(step) {
+    if (!live || channels.length < 2 || channelIndex < 0) return;
+    const index = (channelIndex + step + channels.length) % channels.length;
+    const channel = channels[index];
+    window.dispatchEvent(new CustomEvent("openVideoPlayer", {
+      detail: {
+        src: channel.url,
+        title: channel.name,
+        channelLogo: channel.logo,
+        live: true,
+        channels,
+        channelIndex: index,
+      },
+    }));
   }
 
   async function startStreamProcess() {
@@ -1973,6 +2010,13 @@
     }
 
     switch (event.key.toLowerCase()) {
+      case "pageup":
+      case "pagedown":
+        if (live) {
+          event.preventDefault();
+          switchChannel(event.key.toLowerCase() === "pageup" ? -1 : 1);
+        }
+        break;
       case " ":
       case "k":
         event.preventDefault();
@@ -1985,6 +2029,7 @@
         break;
       case "arrowleft":
         event.preventDefault();
+        if (live) break;
         if (isFinite(currentTime)) {
           const newTime = Math.max(0, currentTime - SEEK_TIME_SHORT);
           currentTime = newTime;
@@ -1998,6 +2043,7 @@
         break;
       case "arrowright":
         event.preventDefault();
+        if (live) break;
         if (isFinite(currentTime) && isFinite(duration)) {
           const newTime = Math.min(duration, currentTime + SEEK_TIME_SHORT);
           currentTime = newTime;
@@ -2011,6 +2057,7 @@
         break;
       case "j":
         event.preventDefault();
+        if (live) break;
         if (isFinite(currentTime)) {
           const newTime = Math.max(0, currentTime - SEEK_TIME_LONG);
           currentTime = newTime;
@@ -2024,6 +2071,7 @@
         break;
       case "l":
         event.preventDefault();
+        if (live) break;
         if (isFinite(currentTime) && isFinite(duration)) {
           const newTime = Math.min(duration, currentTime + SEEK_TIME_LONG);
           currentTime = newTime;
@@ -2333,8 +2381,13 @@
       }, 500);
     }));
 
-    mpvUnlisteners.push(await listen("mpv-end-file", () => {
+    mpvUnlisteners.push(await listen("mpv-end-file", (event) => {
       playing = false;
+      if (live && event.payload?.reason === "error") {
+        loading = true;
+        loadingPhase = "error";
+        loadingStatus.status = "This channel isn't available right now. It may be offline or blocked in your region.";
+      }
     }));
 
     // Periodic skip section check
@@ -2378,6 +2431,8 @@
 
     if ((handleId !== null && fileIndex !== null) || magnetLink) {
       startStreamProcess();
+    } else if (src) {
+      startDirectStream();
     } else {
       loading = false;
     }
@@ -2440,6 +2495,8 @@
       <div class="loading-card">
         {#if metadata?.poster_path}
           <img src={getImageUrl(metadata.poster_path, 'w185')} alt="" class="loading-poster" />
+        {:else if live && channelLogo}
+          <div class="loading-channel-logo"><img src={channelLogo} alt="" /></div>
         {/if}
         <div class="loading-info">
           <div class="loading-title">{metadata?.title || metadata?.name || title}</div>
@@ -2450,7 +2507,13 @@
             <div class="loading-bar"></div>
           </div>
           <div class="loading-status-text">{loadingStatus.status}</div>
-          <button class="cancel-loading-btn" on:click={close}>Cancel</button>
+          {#if live && loadingPhase === "error" && channels.length > 1}
+            <div class="live-error-actions">
+              <button class="cancel-loading-btn" on:click={() => switchChannel(-1)}>Previous channel</button>
+              <button class="cancel-loading-btn" on:click={() => switchChannel(1)}>Next channel</button>
+            </div>
+          {/if}
+          <button class="cancel-loading-btn" on:click={close}>{loadingPhase === "error" ? "Close" : "Cancel"}</button>
         </div>
       </div>
     </div>
@@ -2475,6 +2538,8 @@
         <span class="player-title-sub">S{String(seasonNum).padStart(2,'0')}E{String(episodeNum).padStart(2,'0')} &bull; {episodeName}</span>
       {:else if seasonNum != null && episodeNum != null}
         <span class="player-title-sub">S{String(seasonNum).padStart(2,'0')}E{String(episodeNum).padStart(2,'0')}</span>
+      {:else if live}
+        <span class="player-title-sub">Live TV{#if channels.length > 1 && channelIndex >= 0} &bull; {channelIndex + 1} of {channels.length}{/if}</span>
       {/if}
     </div>
   </div>
@@ -2531,8 +2596,9 @@
     </button>
   {/if}
 
-  <div class="controls" class:visible={showControls}>
+  <div class="controls" class:visible={showControls} class:live>
     <!-- svelte-ignore a11y-no-static-element-interactions -->
+    {#if !live}
     <div
       class="progress-bar"
       bind:this={progressBar}
@@ -2610,15 +2676,28 @@
         </div>
       {/if}
     </div>
+    {/if}
 
     <div class="control-buttons">
       <button on:click={togglePlay} class="play-btn">
         <i class={playing ? "ri-pause-fill" : "ri-play-fill"}></i>
       </button>
 
+      {#if live}
+        {#if channels.length > 1 && channelIndex >= 0}
+          <button class="control-btn" on:click={() => switchChannel(-1)} title="Previous channel (Page Up)">
+            <i class="ri-skip-back-fill"></i>
+          </button>
+          <button class="control-btn" on:click={() => switchChannel(1)} title="Next channel (Page Down)">
+            <i class="ri-skip-forward-fill"></i>
+          </button>
+        {/if}
+        <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+      {:else}
       <span class="time"
         >{formatTime(currentTime)} / {formatTime(duration)}</span
       >
+      {/if}
 
       <div class="spacer"></div>
 

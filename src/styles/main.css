@@ -718,6 +718,12 @@ html.macos .settings-wrapper {
   box-shadow: var(--shadow-highlight), 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
+.live-tv-button.active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-color) 28%, transparent);
+  border-color: color-mix(in srgb, var(--accent-color) 55%, transparent);
+}
+
 .settings-panel {
   position: absolute;
   top: calc(100% + var(--spacing-sm));

@@ -6,6 +6,7 @@
 
   export let searchActive = false;
   export let settingsActive = false;
+  export let liveTvActive = false;
   export let accentColor = null;
   export let immersive = false;
   const appWindow = getCurrentWindow();
@@ -54,6 +55,16 @@
     </div>
     <div class="titlebar-right">
       {#if !immersive}
+        <button
+          class="settings-button titlebar-button live-tv-button"
+          class:active={liveTvActive}
+          on:click={() => (liveTvActive = !liveTvActive)}
+          aria-label="Live TV"
+          aria-pressed={liveTvActive}
+          title="Live TV"
+        >
+          <i class="ri-live-line"></i>
+        </button>
         <SettingsPanel bind:settingsActive />
       {/if}
       <div class="logo"></div>
@@ -67,6 +78,16 @@
     </div>
     <div class="titlebar-right">
       {#if !immersive}
+        <button
+          class="settings-button titlebar-button live-tv-button"
+          class:active={liveTvActive}
+          on:click={() => (liveTvActive = !liveTvActive)}
+          aria-label="Live TV"
+          aria-pressed={liveTvActive}
+          title="Live TV"
+        >
+          <i class="ri-live-line"></i>
+        </button>
         <SettingsPanel bind:settingsActive />
       {/if}
     </div>

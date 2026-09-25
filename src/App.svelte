@@ -4,6 +4,7 @@
   import MediaCarousel from "./lib/MediaCarousel.svelte";
   import MediaDetail from "./lib/MediaDetail.svelte";
   import ViewAll from "./lib/ViewAll.svelte";
+  import LiveTV from "./lib/LiveTV.svelte";
   import RecommendationsCarousel from "./lib/RecommendationsCarousel.svelte";
   import TorrentDebug from "./lib/TorrentDebug.svelte";
   import VideoPlayer from "./lib/VideoPlayer.svelte";
@@ -33,6 +34,7 @@
   let showTorrentDebug = false;
   let savedScrollPosition = 0;
   let hideRecommendations = false;
+  let liveTvActive = false;
 
   // Video Player State
   let showVideoPlayer = false;
@@ -47,6 +49,20 @@
   $: activeModal = $modalStore.activeModal;
 
   $: document.body.classList.toggle('video-active', showVideoPlayer);
+
+  // Opening or leaving Live TV from anywhere starts from a clean page.
+  let liveTvWasActive = false;
+  $: if (liveTvActive !== liveTvWasActive) {
+    liveTvWasActive = liveTvActive;
+    if (liveTvActive) {
+      selectedMedia = null;
+      mediaHistory = [];
+      historyIndex = -1;
+      viewAllData = null;
+      titleBarAccentColor = null;
+    }
+    document.getElementById('main-content')?.scrollTo(0, 0);
+  }
 
   onMount(async () => {
     try {
@@ -84,14 +100,15 @@
       mediaHistory = [];
       historyIndex = -1;
       titleBarAccentColor = null;
+      liveTvActive = false;
       viewAllData = e.detail;
     });
 
     window.addEventListener("openVideoPlayer", async (e) => {
       console.log("[torrent] opening video player with handleId:", e.detail.handleId, "magnet:", e.detail.magnetLink?.substring(0, 50));
       
-      // Wipe all torrent files before starting new stream
-      try {
+      // Wipe all torrent files before starting new stream (live channels don't use torrents)
+      if (!e.detail.live) try {
         console.log("[torrent] wiping all torrent files before starting stream");
         await invoke("wipe_all_torrent_files");
         console.log("[torrent] all torrent files wiped successfully");
@@ -149,6 +166,9 @@
           } else if (viewAllData) {
             e.preventDefault();
             navigateBack();
+          } else if (liveTvActive && !showVideoPlayer) {
+            e.preventDefault();
+            liveTvActive = false;
           } else if (showTorrentDebug) {
             e.preventDefault();
             showTorrentDebug = false;
@@ -303,6 +323,7 @@
     <TitleBar 
       bind:searchActive 
       bind:settingsActive
+      bind:liveTvActive
       accentColor={showVideoPlayer ? null : titleBarAccentColor} 
       immersive={showVideoPlayer || onboardingVisible}
     />
@@ -327,6 +348,8 @@
       {/if}
       {#if selectedMedia}
         <MediaDetail media={selectedMedia} on:close={navigateBack} />
+      {:else if liveTvActive}
+        <LiveTV on:close={() => (liveTvActive = false)} />
       {:else if !viewAllData}
         <div class="dashboard">
           {#if !hideRecommendations}
