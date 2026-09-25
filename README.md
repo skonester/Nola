@@ -84,4 +84,4 @@ Use [GitHub Issues](https://github.com/skonester/Nola/issues) to report bugs or 
 
 ## License
 
-Nola retains the upstream license files and attribution. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-GPL](LICENSE-GPL) for the license terms.
+Nola retains the upstream license files and attribution. Magnolia is dual-licensed under MIT and GPL-3.0, and Nola includes the Soia components that require the GPL-3.0 license. See [LICENSE](LICENSE) for a summary, and [LICENSE-MIT](LICENSE-MIT) and [LICENSE-GPL](LICENSE-GPL) for the full terms.
