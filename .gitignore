@@ -24,6 +24,7 @@ coverage
 
 # Tauri / Rust outputs
 /src-tauri/target
+/mpv-player/target
 /target
 
 # Editor directories and files

@@ -48,6 +48,11 @@
     phaseProgress: 0,
   };
   let pollInterval;
+  // Image blurred behind the loading grid. Live channels have no TMDB
+  // backdrop, so their logo supplies the ambient colour instead.
+  $: loadingBackdrop = metadata?.backdrop_path
+    ? getImageUrl(metadata.backdrop_path, 'w1280')
+    : (live && channelLogo) || "";
 
   const dispatch = createEventDispatcher();
 
@@ -618,11 +623,89 @@
     }
   }
 
+  // Live TV watchdog. FAST channels splice ads into the stream with timestamp
+  // jumps and format changes, and mpv can end up playing audio over a frozen
+  // picture that never recovers. While video plays, mpv's time-pos follows the
+  // video clock, so a time-pos that stops moving (or a video track that drops
+  // out, or an "end" on a stream that never ends) means playback is stuck.
+  // Reloading the URL rejoins the live edge in a couple of seconds.
+  const LIVE_STALL_MS = 6000;
+  const LIVE_BUFFERING_MS = 20000;
+  const LIVE_TUNE_TIMEOUT_MS = 20000;
+  const LIVE_MAX_RETUNES = 4;
+  const LIVE_HEALTHY_MS = 60000; // playing this long refills the retry budget
+  let liveWatchdog = null;
+  let liveLastTime = null;
+  let liveLastProgressAt = 0;
+  let liveLoadStartedAt = 0;
+  let livePlayingSince = 0;
+  let liveHasPlayed = false;
+  let liveHadVideo = false;
+  let liveRetunes = 0;
+  let liveRetuning = false;
+
+  function noteLiveProgress(time) {
+    if (time !== liveLastTime) {
+      liveLastTime = time;
+      liveLastProgressAt = Date.now();
+    }
+  }
+
+  function checkLiveHealth() {
+    const now = Date.now();
+    if (liveRetuning || playingInExternal) {
+      liveLastProgressAt = now;
+      return;
+    }
+    if (loading) {
+      if (loadingPhase === "initializing" && now - liveLoadStartedAt > LIVE_TUNE_TIMEOUT_MS) {
+        retuneLive("timed out tuning in");
+      }
+      return;
+    }
+    if (!playing) {
+      // Paused by the user: don't count the pause as a stall.
+      liveLastProgressAt = now;
+      return;
+    }
+    if (liveRetunes > 0 && now - livePlayingSince > LIVE_HEALTHY_MS) liveRetunes = 0;
+    const limit = showBufferingIndicator ? LIVE_BUFFERING_MS : LIVE_STALL_MS;
+    if (now - liveLastProgressAt > limit) {
+      retuneLive(showBufferingIndicator ? "buffering too long" : "playback stalled");
+    }
+  }
+
+  async function retuneLive(reason) {
+    if (liveRetuning) return;
+    loading = true;
+    if (liveRetunes >= LIVE_MAX_RETUNES) {
+      loadingPhase = "error";
+      loadingStatus.status = "This channel keeps dropping out. Try again, or pick another channel.";
+      return;
+    }
+    liveRetuning = true;
+    liveRetunes += 1;
+    console.warn(`[live] ${reason}; re-tuning (attempt ${liveRetunes}/${LIVE_MAX_RETUNES})`);
+    loadingPhase = "initializing";
+    loadingStatus.status = "Reconnecting...";
+    // Back off a little on repeated failures so a flaky CDN gets a moment.
+    await new Promise((r) => setTimeout(r, 1000 * (liveRetunes - 1)));
+    liveRetuning = false;
+    if (!live) return;
+    await startDirectStream();
+  }
+
+  function retryLiveChannel() {
+    liveRetunes = 0;
+    retuneLive("retry requested");
+  }
+
   async function startDirectStream() {
     loading = true;
     loadingPhase = "initializing";
-    loadingStatus.status = live ? "Tuning in..." : "Opening stream...";
+    loadingStatus.status = liveRetunes > 0 ? "Reconnecting..." : live ? "Tuning in..." : "Opening stream...";
     loadingStatus.phaseProgress = 50;
+    liveLoadStartedAt = Date.now();
     try {
       await invoke("load_file", { path: src });
       // loading = false is set by the file_loaded mpv event listener
@@ -939,6 +1022,7 @@
   function handleMpvProgress(payload) {
     if (payload.time_pos !== undefined && payload.time_pos !== null) {
       currentTime = payload.time_pos;
+      if (live) noteLiveProgress(currentTime);
     }
     if (payload.duration !== undefined && payload.duration !== null && payload.duration > 0) {
       duration = payload.duration;
@@ -1649,7 +1733,7 @@
         if (externalPlayer === 'custom') {
           alert('No custom player program is set, or it could not be found. Choose one in Settings → External video player.');
         } else {
-          alert(`${externalPlayer.toUpperCase()} is not installed or not in PATH. Please install it to use external playback.`);
+          alert(`${externalPlayer.toUpperCase()} could not be found. Install it, or choose another player in Settings → External video player.`);
         }
         return;
       }
@@ -2355,6 +2439,14 @@
       // Sync selected subtitle track index from mpv's own selection state
       const selectedIdx = subtitleTracks.findIndex(t => t.selected);
       selectedSubtitleTrack = selectedIdx; // -1 when no sub track is selected
+      if (live) {
+        // mpv drops a video track it can no longer decode (e.g. an ad break
+        // switched codec) and carries on with audio only. While (re)loading
+        // just learn whether this stream has video at all (radio doesn't).
+        const hasVideo = tracks.some(t => t.track_type === "video" && t.selected);
+        if (loading || hasVideo) liveHadVideo = hasVideo;
+        else if (liveHadVideo) retuneLive("video track lost");
+      }
     }));
 
     mpvUnlisteners.push(await listen("mpv-chapters-update", (event) => {
@@ -2371,6 +2463,10 @@
       playing = true;
       loadingPhase = "ready";
       rawSeekableRanges = []; // stale ranges from the previous file
+      if (live) {
+        liveHasPlayed = true;
+        livePlayingSince = liveLastProgressAt = Date.now();
+      }
       if (initialTimestamp > 0 && !hasSeekedToInitial) {
         hasSeekedToInitial = true;
         await invoke("seek_video", { seconds: initialTimestamp }).catch(() => {});
@@ -2383,7 +2479,12 @@
 
     mpvUnlisteners.push(await listen("mpv-end-file", (event) => {
       playing = false;
-      if (live && event.payload?.reason === "error") {
+      if (!live || liveRetuning) return;
+      const reason = event.payload?.reason;
+      if (liveHasPlayed && (reason === "eof" || reason === "error")) {
+        // A channel that was playing dropped mid-stream: rejoin it.
+        retuneLive(`stream ended (${reason})`);
+      } else if (reason === "error") {
         loading = true;
         loadingPhase = "error";
         loadingStatus.status = "This channel isn't available right now. It may be offline or blocked in your region.";
@@ -2433,6 +2534,7 @@
       startStreamProcess();
     } else if (src) {
       startDirectStream();
+      if (live) liveWatchdog = setInterval(checkLiveHealth, 1000);
     } else {
       loading = false;
     }
@@ -2445,6 +2547,7 @@
     if (skipButtonTimeout) clearTimeout(skipButtonTimeout);
     if (skipTimerInterval) clearInterval(skipTimerInterval);
     if (skipSectionCheckInterval) clearInterval(skipSectionCheckInterval);
+    if (liveWatchdog) clearInterval(liveWatchdog);
     skipTimerActive = false;
 
     window.removeEventListener("mousemove", handleDrag);
@@ -2488,9 +2591,9 @@
 
   {#if loading}
     <div class="loading-overlay">
-      {#if metadata?.backdrop_path}
-        <img src={getImageUrl(metadata.backdrop_path, 'w1280')} alt="" class="loading-backdrop-img" aria-hidden="true" />
-        <img src={getImageUrl(metadata.backdrop_path, 'w1280')} alt="" class="loading-backdrop-img clone" aria-hidden="true" />
+      {#if loadingBackdrop}
+        <img src={loadingBackdrop} alt="" class="loading-backdrop-img" aria-hidden="true" />
+        <img src={loadingBackdrop} alt="" class="loading-backdrop-img clone" aria-hidden="true" />
       {/if}
       <div class="loading-card">
         {#if metadata?.poster_path}
@@ -2507,10 +2610,13 @@
             <div class="loading-bar"></div>
           </div>
           <div class="loading-status-text">{loadingStatus.status}</div>
-          {#if live && loadingPhase === "error" && channels.length > 1}
+          {#if live && loadingPhase === "error"}
             <div class="live-error-actions">
-              <button class="cancel-loading-btn" on:click={() => switchChannel(-1)}>Previous channel</button>
-              <button class="cancel-loading-btn" on:click={() => switchChannel(1)}>Next channel</button>
+              <button class="cancel-loading-btn" on:click={retryLiveChannel}>Try again</button>
+              {#if channels.length > 1}
+                <button class="cancel-loading-btn" on:click={() => switchChannel(-1)}>Previous channel</button>
+                <button class="cancel-loading-btn" on:click={() => switchChannel(1)}>Next channel</button>
+              {/if}
             </div>
           {/if}
           <button class="cancel-loading-btn" on:click={close}>{loadingPhase === "error" ? "Close" : "Cancel"}</button>

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ const tauriRuntimeMacConfigPath = resolve(projectRoot, "src-tauri", "tauri.runti
 const tauriRuntimeWindowsConfigPath = resolve(projectRoot, "src-tauri", "tauri.runtime.windows.json");
 const runtimeLibsDir = resolve(projectRoot, "src-tauri", "libs");
 const mpvRuntimeLibsDir = resolve(runtimeLibsDir, "mpv");
+const mpvPlayerManifestPath = resolve(projectRoot, "mpv-player", "Cargo.toml");
 const devFrameworksDir = resolve(projectRoot, "src-tauri", "target", "Frameworks");
 const devVulkanIcdPath = resolve(
   projectRoot,
@@ -119,6 +120,32 @@ if (tauriSubcommand === "build" && process.platform === "win32" && !hasUserConfi
     process.exit(1);
   }
   tauriArgs.push("--config", tauriRuntimeWindowsConfigPath);
+}
+
+// Build the small mpv.exe (mpv-player/) used by "Open in external player" and
+// put it next to the app: in target/debug for dev, and into the installer
+// (via a gitignored copy in libs/mpv) for builds. It links the bundled libmpv.
+if (isDevOrBuild && process.platform === "win32") {
+  const profile = isDev || tauriArgs.includes("--debug") ? "debug" : "release";
+  const cargoArgs = ["build", "--manifest-path", mpvPlayerManifestPath];
+  if (profile === "release") cargoArgs.push("--release");
+  const result = spawnSync("cargo", cargoArgs, { cwd: projectRoot, stdio: "inherit" });
+  if (result.status !== 0) {
+    console.error("[ERROR] Failed to build mpv-player (the bundled mpv.exe).");
+    process.exit(result.status ?? 1);
+  }
+  const built = resolve(projectRoot, "mpv-player", "target", profile, "mpv.exe");
+  const destination = isDev
+    ? resolve(projectRoot, "src-tauri", "target", "debug", "mpv.exe")
+    : resolve(mpvRuntimeLibsDir, "mpv.exe");
+  // Skip identical copies: libs/mpv is a rerun-if-changed input of the app's build script.
+  if (!existsSync(destination) || !readFileSync(built).equals(readFileSync(destination))) {
+    mkdirSync(dirname(destination), { recursive: true });
+    copyFileSync(built, destination);
+  }
+  if (!isDev) {
+    tauriArgs.push("--config", resolve(projectRoot, "src-tauri", "tauri.mpv-player.windows.json"));
+  }
 }
 
 const tauriCmd = "tauri";

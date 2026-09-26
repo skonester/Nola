@@ -515,6 +515,60 @@ async fn get_settings(
     Ok(settings_manager.get().await)
 }
 
+/// Locate an mpv executable: on Windows the mpv.exe we ship next to the app
+/// (built from mpv-player/ on the bundled libmpv), then common install
+/// locations (GUI apps on macOS don't inherit the shell PATH), then PATH.
+fn find_mpv() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)) {
+            candidates.push(dir.join("mpv.exe"));
+        }
+        for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(dir) = std::env::var(var) {
+                candidates.push(PathBuf::from(dir).join(r"mpv\mpv.exe"));
+            }
+        }
+        if let Ok(dir) = std::env::var("USERPROFILE") {
+            candidates.push(PathBuf::from(dir).join(r"scoop\shims\mpv.exe"));
+        }
+        if let Ok(dir) = std::env::var("ProgramData") {
+            candidates.push(PathBuf::from(dir).join(r"chocolatey\bin\mpv.exe"));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    candidates.extend(
+        [
+            "/opt/homebrew/bin/mpv",
+            "/usr/local/bin/mpv",
+            "/Applications/mpv.app/Contents/MacOS/mpv",
+        ]
+        .map(PathBuf::from),
+    );
+
+    if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+        return Some(found);
+    }
+
+    #[cfg(target_os = "windows")]
+    let on_path = std::process::Command::new("where")
+        .arg("mpv")
+        .creation_flags(0x08000000)
+        .output();
+    #[cfg(not(target_os = "windows"))]
+    let on_path = std::process::Command::new("which").arg("mpv").output();
+
+    on_path
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|_| PathBuf::from("mpv"))
+}
+
 #[tauri::command]
 async fn check_external_player(player: String, custom_path: Option<String>) -> Result<bool, String> {
     use std::process::Command;
@@ -544,11 +598,11 @@ async fn check_external_player(player: String, custom_path: Option<String>) -> R
     }
 
     let command_name = match player.to_lowercase().as_str() {
-        "mpv" => "mpv",
-        "vlc" => if cfg!(target_os = "windows") { "vlc" } else { "vlc" },
+        "mpv" => return Ok(find_mpv().is_some()),
+        "vlc" => "vlc",
         _ => return Err(format!("Unsupported player: {}", player)),
     };
-    
+
     // On Windows, check common VLC installation paths
     #[cfg(target_os = "windows")]
     if player.to_lowercase() == "vlc" {
@@ -626,7 +680,10 @@ async fn open_in_external_player(
     }
 
     let command_name = match player.to_lowercase().as_str() {
-        "mpv" => "mpv".to_string(),
+        "mpv" => find_mpv()
+            .ok_or("mpv was not found. Reinstall the app or install mpv.")?
+            .to_string_lossy()
+            .into_owned(),
         "vlc" => {
             // On Windows, try to find VLC in common installation paths
             #[cfg(target_os = "windows")]

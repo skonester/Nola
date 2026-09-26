@@ -1,0 +1,20 @@
+[package]
+name = "mpv-player"
+version = "0.1.0"
+description = "Standalone mpv window built on the app's bundled libmpv (external player fallback)"
+license = "MIT"
+edition = "2021"
+publish = false
+
+# Kept out of src-tauri so it builds in seconds (no app dependencies) and so
+# `tauri dev`'s file watcher doesn't see its target/ directory.
+[workspace]
+
+[[bin]]
+name = "mpv"
+path = "main.rs"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
