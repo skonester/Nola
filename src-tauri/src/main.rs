@@ -19,6 +19,7 @@ mod anime_list;
 mod updater;
 mod extensions;
 mod live_channels;
+mod live_proxy;
 
 use extensions::ExtensionManager;
 use std::sync::{Arc, Mutex};
@@ -1170,6 +1171,7 @@ fn main() {
             live_channels::add_live_source,
             live_channels::refresh_live_source,
             live_channels::remove_live_source,
+            live_proxy::live_stream_url,
             load_file,
             cycle_pause,
             seek_video,

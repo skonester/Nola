@@ -700,14 +700,27 @@
     retuneLive("retry requested");
   }
 
+  // Bumped on every (re)load and on destroy, so a slow live-proxy lookup
+  // can't load a channel the user has already left.
+  let directStreamRequest = 0;
+
+  // Live channels play through the local HLS proxy (src-tauri/src/live_proxy.rs):
+  // it keeps ad breaks on the tracks mpv is playing and tunes in faster.
+  function liveStreamUrl() {
+    return invoke("live_stream_url", { url: src }).catch(() => src);
+  }
+
   async function startDirectStream() {
+    const request = ++directStreamRequest;
     loading = true;
     loadingPhase = "initializing";
     loadingStatus.status = liveRetunes > 0 ? "Reconnecting..." : live ? "Tuning in..." : "Opening stream...";
     loadingStatus.phaseProgress = 50;
     liveLoadStartedAt = Date.now();
     try {
-      await invoke("load_file", { path: src });
+      const path = live ? await liveStreamUrl() : src;
+      if (request !== directStreamRequest) return;
+      await invoke("load_file", { path });
       // loading = false is set by the file_loaded mpv event listener
     } catch (error) {
       console.error("Failed to open stream:", error);
@@ -1739,7 +1752,8 @@
       }
       await invoke('open_in_external_player', {
         player: externalPlayer,
-        streamUrl: src,
+        // mpv needs the live proxy as much as the built-in player does.
+        streamUrl: live && externalPlayer === 'mpv' ? await liveStreamUrl() : src,
         title: title,
         customPath
       });
@@ -2541,6 +2555,7 @@
   });
 
   onDestroy(async () => {
+    directStreamRequest += 1;
     clearInterval(pollInterval);
     if (pieceRangeInterval) clearInterval(pieceRangeInterval);
     if (progressTrackingInterval) clearInterval(progressTrackingInterval);
