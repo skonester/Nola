@@ -46,7 +46,7 @@ fn default_true() -> bool {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            external_player: "vlc".to_string(),
+            external_player: "mpv".to_string(),
             external_player_custom_path: String::new(),
             remember_preferences: true,
             show_skip_prompts: true,

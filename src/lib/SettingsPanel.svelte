@@ -9,7 +9,7 @@
   
   const dispatch = createEventDispatcher();
   
-  let externalPlayer = 'vlc';
+  let externalPlayer = 'mpv';
   let externalPlayerCustomPath = '';
   let rememberPreferences = true;
   let showSkipPrompts = true;
