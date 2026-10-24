@@ -12,7 +12,7 @@ const files = [
   "src-tauri/Cargo.lock", "src-tauri/tauri.conf.json", "src-tauri/tauri.macos.conf.json",
   "src-tauri/tauri.runtime.macos.json", "src-tauri/tauri.runtime.windows.json",
   "index.html", "src/lib/AboutModal.svelte", "src/lib/Onboarding.svelte",
-  "src/lib/Updater.svelte", "src-tauri/src/torrent.rs", "src-tauri/src/main.rs",
+  "src/lib/Updater.svelte", "src-tauri/src/main.rs",
 ];
 
 function fixture(t) {
@@ -56,7 +56,6 @@ test("brands a release, isolates updates/data, and preserves artwork and runtime
   assert.match(read(root, "src/lib/AboutModal.svelte"), /https:\/\/github.com\/example\/Nola/);
   assert.match(read(root, "src/lib/Updater.svelte"), /https:\/\/api.github.com\/repos\/example\/Nola\/releases\/latest/);
   assert.ok(!read(root, "src/lib/Updater.svelte").includes("repos/chwair/magnolia"));
-  assert.ok(!read(root, "src-tauri/src/torrent.rs").includes("com.chair.magnolia"));
   const updater = read(root, "src/lib/Updater.svelte");
   const expression = updater.match(/latestVersion = (release\.tag_name\.replace\([^;]+\));/)[1];
   const parseTag = new Function("release", `return ${expression}`);

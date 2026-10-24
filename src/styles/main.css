@@ -152,9 +152,6 @@ pre {
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: var(--shadow-highlight), var(--shadow-depth);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  will-change: transform;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -233,7 +230,6 @@ pre {
   top: 8px;
   right: 8px;
   background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
   color: var(--text-primary);
   padding: 4px 8px;
   border-radius: var(--border-radius-sm);
@@ -256,24 +252,6 @@ pre {
 .progress-badge.watched-badge i {
   font-size: 12px;
   line-height: 1;
-}
-
-/* Progress Bar for media cards */
-.media-card .progress-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  z-index: 3;
-  pointer-events: none;
-}
-
-.media-card .progress-fill {
-  height: 100%;
-  background: var(--card-accent, #10b981);
-  transition: width 0.3s ease;
 }
 
 /* Blur Overlay */
@@ -299,8 +277,6 @@ pre {
   gap: var(--spacing-md);
   box-shadow: var(--shadow-inset-highlight), var(--shadow-inset-depth);
   z-index: 10000;
-  -webkit-backdrop-filter: blur(100px);
-  backdrop-filter: blur(100px);
 }
 
 /* macOS specific titlebar padding for inset traffic lights.
@@ -449,8 +425,6 @@ html.macos .settings-wrapper {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: var(--shadow-highlight), var(--shadow-depth);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
 }
@@ -471,8 +445,6 @@ html.macos .settings-wrapper {
     var(--shadow-depth),
     0 0 20px color-mix(in srgb, var(--accent-color) 20%, transparent);
   font-weight: 600;
-  -webkit-backdrop-filter: blur(15px);
-  backdrop-filter: blur(15px);
 }
 
 /* Layout Containers */
@@ -563,18 +535,54 @@ html.macos .settings-wrapper {
   margin-bottom: var(--spacing-sm);
 }
 
+/* quiet glass pill with a star in the rating's colour, like the tile ratings */
 .rating-box {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 45px;
-  padding: 6px 12px;
-  border-radius: var(--border-radius-md);
-  font-size: 16px;
-  font-weight: 700;
-  color: #000;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-  line-height: 1;
+    --rating-color: #6bdb8f;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px 5px 8px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+
+.rating-box i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--rating-color);
+}
+
+/* the star glyph draws a little low in its box; this lines it up with the digits */
+.rating-box i::before {
+    display: block;
+    line-height: 13px;
+    transform: translateY(-1px);
+}
+
+.rating-box .rating-value,
+.rating-box .rating-scale {
+    display: inline-block;
+    line-height: 1;
+}
+
+.rating-box .rating-scale {
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+    margin-left: -3px;
 }
 
 .detail-genres {
@@ -969,4 +977,8 @@ html:not(.macos) .titlebar.immersive-mode {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   background: rgba(10, 10, 10, 0.92);
+}
+
+.is-scrolling * {
+  pointer-events: none !important;
 }

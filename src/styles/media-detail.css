@@ -8,7 +8,6 @@
     background: rgba(0, 0, 0, 0.98);
     z-index: 9000;
     animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    backdrop-filter: blur(20px);
 }
 
 .detail-container {
@@ -368,18 +367,54 @@
     letter-spacing: 0.5px;
 }
 
+/* quiet glass pill with a star in the rating's colour, like the tile ratings */
 .rating-box {
+    --rating-color: #6bdb8f;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 11px 6px 9px;
+    border-radius: 999px;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+
+.rating-box i {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 50px;
-    padding: 8px 14px;
-    border-radius: var(--border-radius-md);
-    font-size: 18px;
-    font-weight: 700;
-    color: #000;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    width: 15px;
+    height: 15px;
+    font-size: 15px;
     line-height: 1;
+    color: var(--rating-color);
+}
+
+/* the star glyph draws a little low in its box; this lines it up with the digits */
+.rating-box i::before {
+    display: block;
+    line-height: 15px;
+    transform: translateY(-1px);
+}
+
+.rating-box .rating-value,
+.rating-box .rating-scale {
+    display: inline-block;
+    line-height: 1;
+}
+
+.rating-box .rating-scale {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+    margin-left: -3px;
 }
 
 .detail-genres {
@@ -398,10 +433,7 @@
     font-size: 13px;
     color: inherit;
     opacity: 0.9;
-    transition: all 0.2s ease;
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
+    transition: background 0.2s ease, opacity 0.2s ease;
 }
 
 .genre-tag:hover {
@@ -455,9 +487,6 @@
     bottom: calc(100% + 8px);
     right: 0;
     background: rgba(15, 15, 15, 0.98);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
-    will-change: transform;
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--border-radius-md);
     padding: var(--spacing-sm);
@@ -603,7 +632,6 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
-    will-change: transform;
 }
 
 .tab-btn {
@@ -628,9 +656,6 @@
     color: var(--text-primary);
     background: rgba(255, 255, 255, 0.15);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
 }
 
 .tab-content {
@@ -642,14 +667,14 @@
 .cast-crew-container {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-3xl);
+    gap: var(--spacing-2xl);
 }
 
 .section-subtitle {
     font-size: 20px;
     font-weight: 700;
     color: var(--text-primary);
-    margin-bottom: var(--spacing-xl);
+    margin-bottom: var(--spacing-sm);
 }
 
 .cast-section, .crew-section {
@@ -657,31 +682,40 @@
     flex-direction: column;
 }
 
-.cast-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: var(--spacing-xl);
-}
-
+/* same edge, shadow and hover as the browse tiles, tinted with the title's colour */
 .cast-card {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--border-radius-lg);
+    appearance: none;
+    width: 150px;
+    flex-shrink: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    background: #151515;
+    border: none;
+    border-radius: 12px;
     overflow: hidden;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+        0 10px 30px -12px rgba(0, 0, 0, 0.7);
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .cast-card:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    transform: translateY(-4px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        inset 0 0 0 1px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 60%, rgba(255, 255, 255, 0.2)),
+        0 18px 40px -14px rgba(0, 0, 0, 0.8),
+        0 10px 36px -12px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 40%, transparent);
 }
 
 .cast-card img {
+    display: block;
     width: 100%;
     aspect-ratio: 2/3;
     object-fit: cover;
@@ -699,14 +733,15 @@
 }
 
 .cast-card .cast-info {
-    padding: var(--spacing-lg);
+    flex: 1;
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
 .cast-card .cast-info h4 {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
@@ -714,10 +749,19 @@
 }
 
 .cast-card .cast-info p {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     margin: 0;
     line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.cast-card .cast-info .crew-job {
+    font-weight: 500;
 }
 
 .cast-card .cast-info .episode-count {
@@ -726,74 +770,9 @@
     font-weight: 500;
 }
 
-.crew-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: var(--spacing-xl);
-}
-
-.crew-card {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
-}
-
-.crew-card:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-.crew-card img {
-    width: 100%;
-    aspect-ratio: 2/3;
-    object-fit: cover;
-}
-
-.crew-card .crew-placeholder {
-    width: 100%;
-    aspect-ratio: 2/3;
-    background: rgba(255, 255, 255, 0.05);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 40px;
-    color: rgba(255, 255, 255, 0.15);
-}
-
-.crew-card .crew-info {
-    padding: var(--spacing-lg);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.crew-card .crew-info h4 {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-    line-height: 1.3;
-}
-
-.crew-card .crew-info .crew-job {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin: 0;
-    line-height: 1.4;
-    font-weight: 500;
-}
-
-.crew-card .crew-info .episode-count {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    font-weight: 500;
+.cast-section .scroller-track,
+.crew-section .scroller-track {
+    align-items: stretch;
 }
 
 .detail-additional {
@@ -823,9 +802,6 @@
     padding: var(--spacing-lg);
     border-radius: var(--border-radius-md);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
 }
 
 .detail-item.full-width {
@@ -997,9 +973,6 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-size: 15px;
     font-weight: 500;
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
@@ -1020,9 +993,6 @@
     box-shadow:
         0 6px 20px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 30%, rgba(0, 0, 0, 0.4)),
         0 0 30px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 15%, transparent);
-    -webkit-backdrop-filter: blur(15px);
-    backdrop-filter: blur(15px);
-    will-change: transform;
 }
 
 .episodes-grid {
@@ -1040,10 +1010,7 @@
     border-radius: var(--border-radius-xl);
     overflow: hidden;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow:
         0 4px 12px rgba(0, 0, 0, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -1391,10 +1358,8 @@ button.heatmap-cell {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--border-radius-md);
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
     cursor: pointer;
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
 }
 
 .season-card:hover {
@@ -1489,31 +1454,19 @@ button.heatmap-cell {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.recommendations-section .section-title {
+.recommendations-section .carousel-section {
+    margin: 0;
+    padding: 0;
+}
+
+.recommendations-section .carousel-section .section-header {
+    padding: 0;
+}
+
+.recommendations-section .carousel-section .section-title {
     font-size: 24px;
     font-weight: 700;
-    margin-bottom: var(--spacing-xl);
     color: var(--text-primary);
-}
-
-.recommendations-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: var(--spacing-xl);
-    max-width: 100%;
-}
-
-/* Recommendation cards use media-card from home.css — overrides for grid context */
-.recommendations-grid .media-card {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 100%;
-    height: auto;
-    aspect-ratio: 2/3;
-    flex-shrink: unset;
-    font: inherit;
-    color: inherit;
-    text-align: left;
 }
 
 .rec-placeholder {
@@ -2080,16 +2033,34 @@ button.episode-list-item {
     width: 160px;
     flex-shrink: 0;
     aspect-ratio: 16/9;
-    border-radius: var(--border-radius-md);
+    border-radius: 10px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.05);
+    background: #151515;
     position: relative;
+    isolation: isolate;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+        0 6px 18px -8px rgba(0, 0, 0, 0.6);
+    transition: box-shadow 0.3s ease;
 }
 
 .episode-still img {
+    position: relative;
+    z-index: -1;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.episode-list-item:hover .episode-still {
+    box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 60%, rgba(255, 255, 255, 0.2)),
+        0 8px 22px -8px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 45%, rgba(0, 0, 0, 0.6));
+}
+
+.episode-list-item:hover .episode-still img {
+    transform: scale(1.05);
 }
 
 .episode-still .progress-badge {
@@ -2097,7 +2068,6 @@ button.episode-list-item {
     top: 6px;
     right: 6px;
     background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(8px);
     color: var(--text-primary);
     padding: 3px 8px;
     border-radius: var(--border-radius-sm);
@@ -2107,20 +2077,30 @@ button.episode-list-item {
     z-index: 2;
 }
 
+/* watched stills fade back and carry the same green check as the wide tiles */
 .watched-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.52);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
     z-index: 3;
 }
 
 .watched-overlay i {
-    font-size: 30px;
-    color: #2ed573;
-    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7));
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 13px;
+    color: #d1fae5;
+    background: rgba(16, 185, 129, 0.45);
+    border: 1px solid rgba(52, 211, 153, 0.5);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
 }
 
 /* episode name dimmed when watched */
@@ -2152,20 +2132,25 @@ button.episode-list-item {
     font-size: 13px;
 }
 
-.progress-bar-container {
+/* inset pill like the tile progress bars. scoped to episode stills: the player's seekbar and
+   the torrent debug panel use the same class names */
+.episode-still .progress-bar-container {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: rgba(0, 0, 0, 0.5);
+    left: 8px;
+    right: 8px;
+    bottom: 7px;
+    height: 3px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.25);
     z-index: 3;
 }
 
-.progress-bar {
+.episode-still .progress-bar {
     height: 100%;
-    background: var(--accent-color);
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--prominent-color, var(--accent-color)) 70%, white);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--prominent-color, var(--accent-color)) 70%, transparent);
 }
 
 .episode-placeholder {

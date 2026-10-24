@@ -1,16 +1,18 @@
 <script>
 import { onMount, onDestroy, createEventDispatcher } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
-import { getTrending, getPopularMovies, getPopularTV, getTopRatedMovies, getTopRatedTV, getNowPlaying, discoverMovies, discoverTV, getImageUrl } from './tmdb.js';
+import { scrollHoverGuard } from './utils/scrollHoverGuard.js';
+import { getImageUrl, getCorsImageUrl } from './tmdb.js';
+import { fetchBrowseList } from './browseLists.js';
 import { myListStore } from './stores/listStore.js';
 import { watchProgressStore } from './stores/watchProgressStore.js';
-import { getRatingColor } from './utils/colorUtils.js';
+import { getRatingColor, extractArtAccent } from './utils/colorUtils.js';
 
 const dispatch = createEventDispatcher();
 
 export let title = '';
-export let type = 'movie';
-export let category = 'popular';
+export let type = 'all';
+export let category = null;
 export let genre = null;
 export let filterId = null;
 export let customItems = null;
@@ -32,7 +34,22 @@ let loadMoreObserver;
 let scrollHost;
 
 $: myListItems = new Set($myListStore.map(item => `${item.id}-${item.media_type}`));
-$: isTagList = category === 'discover_by_genre' || category === 'discover_by_keyword';
+$: loadCardColors(items);
+
+// same per-title accent as the home rows; titles without colourful art keep the app accent
+function loadCardColors(list) {
+  for (const item of list) {
+    const key = itemKey(item);
+    if (key in cardColors || !item.poster_path) continue;
+    cardColors[key] = null;
+    extractArtAccent(getCorsImageUrl(item.poster_path, 'w92'), null).then((color) => {
+      if (!color) return;
+      cardColors[key] = color;
+      cardColors = cardColors;
+    });
+  }
+}
+$: isTagList = category === 'discover_by_genre' || category === 'discover_by_keyword' || category === 'person';
 $: if (scrollHost && infiniteScrollSentinel && !customItems && page < totalPages) {
   setupInfiniteScroll();
 } else if (loadMoreObserver && (!infiniteScrollSentinel || customItems || page >= totalPages)) {
@@ -43,14 +60,19 @@ $: if (scrollHost && infiniteScrollSentinel && !customItems && page < totalPages
 onMount(async () => {
   await loadItems();
 
-  const handleOverlayScroll = () => {
+  const titlebarHeight = parseInt(
+    getComputedStyle(document.documentElement).getPropertyValue('--titlebar-height') || '50',
+    10,
+  ) || 50;
+  let scrollFrame = null;
+  const updateStickyHeader = () => {
+    scrollFrame = null;
     if (!mainHeaderEl) return;
-    const titlebarHeight = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue('--titlebar-height') || '50',
-      10,
-    ) || 50;
     const headerRect = mainHeaderEl.getBoundingClientRect();
     showStickyHeader = headerRect.bottom <= titlebarHeight + 8;
+  };
+  const handleOverlayScroll = () => {
+    if (scrollFrame === null) scrollFrame = requestAnimationFrame(updateStickyHeader);
   };
 
   scrollHost = overlayEl;
@@ -64,6 +86,7 @@ onMount(async () => {
     if (scrollHost) {
       scrollHost.removeEventListener('scroll', handleOverlayScroll);
     }
+    if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
     if (loadMoreObserver) {
       loadMoreObserver.disconnect();
       loadMoreObserver = null;
@@ -82,7 +105,7 @@ onDestroy(() => {
 async function loadItems() {
   loading = true;
   error = null;
-  
+
   try {
     if (customItems) {
       items = customItems;
@@ -90,78 +113,25 @@ async function loadItems() {
       return;
     }
 
-    let response;
-    if (category === 'trending') {
-      response = await getTrending(type === 'all' ? 'all' : type, 'day', page);
-    } else if (category === 'discover_by_genre' || category === 'discover_by_keyword') {
-      const discoverParams = {
-        page,
-        sort_by: 'popularity.desc'
-      };
-      if (category === 'discover_by_genre') {
-        discoverParams.with_genres = String(filterId ?? genre ?? '');
-      } else {
-        discoverParams.with_keywords = String(filterId ?? '');
-      }
-
-      if (type === 'movie') {
-        response = await discoverMovies(discoverParams);
-      } else if (type === 'tv') {
-        response = await discoverTV(discoverParams);
-      } else {
-        const [movieResponse, tvResponse] = await Promise.all([
-          discoverMovies(discoverParams),
-          discoverTV(discoverParams)
-        ]);
-
-        const movieResults = (movieResponse?.results || []).map((item) => ({ ...item, media_type: 'movie' }));
-        const tvResults = (tvResponse?.results || []).map((item) => ({ ...item, media_type: 'tv' }));
-        response = {
-          results: [...movieResults, ...tvResults].sort((a, b) => (b.popularity || 0) - (a.popularity || 0)),
-          total_pages: Math.max(movieResponse?.total_pages || 1, tvResponse?.total_pages || 1),
-        };
-      }
-    } else if (category === 'popular') {
-      if (genre) {
-        const params = { with_genres: String(genre), page, sort_by: 'popularity.desc' };
-        response = type === 'movie' ? await discoverMovies(params) : await discoverTV(params);
-      } else {
-        response = type === 'movie' ? await getPopularMovies(page) : await getPopularTV(page);
-      }
-    } else if (category === 'top_rated') {
-      response = type === 'movie' ? await getTopRatedMovies(page) : await getTopRatedTV(page);
-    } else if (category === 'now_playing') {
-      response = await getNowPlaying(page);
+    const response = await fetchBrowseList({ category, type, filterId: filterId ?? genre, page });
+    if (page === 1) {
+      items = response.results;
+    } else {
+      const existingKeys = new Set(items.map(itemKey));
+      items = [...items, ...response.results.filter(item => !existingKeys.has(itemKey(item)))];
     }
-
-    if (response?.results) {
-      // Ensure media_type is set for all items
-      const resultsWithType = response.results.map(item => {
-        if (!item.media_type) {
-          item.media_type = type === 'tv' ? 'tv' : 'movie';
-        }
-        return item;
-      });
-      
-      if (page === 1) {
-        items = resultsWithType;
-      } else {
-        const existingIds = new Set(items.map(item => item.id));
-        const newItems = resultsWithType.filter(item => !existingIds.has(item.id));
-        items = [...items, ...newItems];
-      }
-
-      resultsWithType.forEach((item) => {
-        // no-op: color extraction removed
-      });
-
-      totalPages = response.total_pages || 1;
-    }
+    totalPages = response.total_pages || 1;
   } catch (err) {
     error = err.message;
   }
-  
+
   loading = false;
+  // filtered pages can come back short and leave the sentinel on screen, which never fires again
+  if (!error && page < totalPages) requestAnimationFrame(setupInfiniteScroll);
+}
+
+function itemKey(item) {
+  return `${item.id}-${item.media_type}`;
 }
 
 function setupInfiniteScroll() {
@@ -208,58 +178,33 @@ async function handleQuickPlay(event, item) {
 
   const itemMediaType = item.media_type || (type === 'tv' ? 'tv' : 'movie');
   const key = `${item.id}-${itemMediaType}`;
-  if (playingItemKey === key) return;
+  if (playingItemKey === key) return; // already in-flight
   const progress = $watchProgressStore[key];
-  const isMovie = itemMediaType === 'movie';
   playingItemKey = key;
 
-  let targetSeason = 0;
-  let targetEpisode = 0;
-  if (!isMovie) {
-    if (progress?.currentSeason && progress?.currentEpisode) {
-      targetSeason = progress.currentSeason;
-      targetEpisode = progress.currentEpisode;
-    } else {
-      targetSeason = 1;
-      targetEpisode = 1;
-    }
-  }
-
+  // the backend picks the episode to continue and readies its saved torrent;
+  // with nothing saved (or a finished episode) the detail view has to decide
   try {
-    const saved = await invoke('get_saved_selection', {
-      showId: Number(item.id),
-      season: targetSeason,
-      episode: targetEpisode
-    });
-
-    if (saved && saved.magnet_link) {
-      const handleId = await invoke('add_torrent', { magnetOrUrl: saved.magnet_link });
+    const plan = await invoke('plan_quick_play', { mediaId: Number(item.id), mediaType: itemMediaType });
+    if (plan) {
       const mediaTitle = item.title || item.name || '';
-      const playerTitle = isMovie
-        ? mediaTitle
-        : `${mediaTitle} - S${targetSeason}E${targetEpisode}`;
-      let initialTimestamp = 0;
-      if (isMovie && progress?.currentTimestamp) {
-        initialTimestamp = progress.currentTimestamp;
-      } else if (!isMovie && progress?.currentSeason === targetSeason && progress?.currentEpisode === targetEpisode) {
-        initialTimestamp = progress.currentTimestamp || 0;
-      }
-      playingItemKey = null;
+      const isMovie = itemMediaType === 'movie';
       window.dispatchEvent(new CustomEvent('openVideoPlayer', {
         detail: {
           src: null,
-          title: playerTitle,
+          title: isMovie ? mediaTitle : `${mediaTitle} - S${plan.season}E${plan.episode}`,
           metadata: item,
-          handleId,
-          fileIndex: saved.file_index,
-          magnetLink: saved.magnet_link,
-          initialTimestamp,
+          handleId: plan.handle_id,
+          fileIndex: plan.file_index,
+          magnetLink: plan.magnet_link,
+          initialTimestamp: plan.initial_timestamp,
           mediaId: item.id,
           mediaType: itemMediaType,
-          seasonNum: isMovie ? null : targetSeason,
-          episodeNum: isMovie ? null : targetEpisode,
+          seasonNum: plan.season,
+          episodeNum: plan.episode,
         }
       }));
+      playingItemKey = null;
       return;
     }
   } catch (err) {
@@ -271,9 +216,6 @@ async function handleQuickPlay(event, item) {
     detail: { ...item, autoPlay: true, resumeProgress: progress }
   }));
 }
-
-function handleCardEnter(_item) {}
-function handleCardLeave(_item) {}
 
 function isInMyList(item) {
   return myListItems.has(`${item.id}-${item.media_type}`);
@@ -296,7 +238,7 @@ function formatDate(dateString) {
 
 </script>
 
-<div class="view-all-overlay" bind:this={overlayEl}>
+<div class="view-all-overlay" bind:this={overlayEl} use:scrollHoverGuard>
 
   <div class="view-all-sticky-header" class:visible={showStickyHeader}>
     <button class="btn-standard back-btn" on:click={() => dispatch('close')}>
@@ -326,64 +268,53 @@ function formatDate(dateString) {
     </div>
 
     {#if loading && items.length === 0}
-      <div class="loading">Loading...</div>
+      <div class="view-all-grid" aria-hidden="true">
+        {#each Array(18) as _}
+          <div class="tile poster fluid rec-skeleton-pulse"></div>
+        {/each}
+      </div>
     {:else if error}
       <div class="error">Error: {error}</div>
     {:else}
       <div class="view-all-grid">
-        {#each items as item (item.id)}
+        {#each items as item (itemKey(item))}
+          {@const itemKey = `${item.id}-${item.media_type}`}
+          {@const inList = myListItems.has(itemKey)}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
           <!-- svelte-ignore a11y-no-static-element-interactions -->
-          <div
-            class="grid-card"
-            on:click={() => openDetail(item)}
-            on:mouseenter={() => handleCardEnter(item)}
-            on:mouseleave={() => handleCardLeave(item)}
-          >
-            {#if item.poster_path}
-              <img src={getImageUrl(item.poster_path, 'w342')} alt={item.title || item.name} loading="lazy" />
-            {:else}
-              <div class="no-poster">
-                <i class="ri-film-line"></i>
-              </div>
-            {/if}
-            
-            {#if item.vote_average > 0}
-              <div class="grid-card-rating">
-                <span class="rating-badge" style="background: {getRatingColor(item.vote_average)}">
-                  {item.vote_average.toFixed(1)}
-                </span>
-              </div>
-            {/if}
-            
-            <div class="grid-card-overlay">
-              <div class="grid-card-info">
-                <h3>{item.title || item.name}</h3>
-                <div class="grid-card-meta">
-                  <span class="year">{formatDate(item.release_date || item.first_air_date)}</span>
-                  {#if item.vote_average > 0}
-                    <span class="rating-badge" style="background: {getRatingColor(item.vote_average)}">
-                      {item.vote_average.toFixed(1)}
-                    </span>
-                  {/if}
-                </div>
-              </div>
-              
-              <div class="grid-card-actions">
-                <button class="action-btn" class:loading={playingItemKey === `${item.id}-${item.media_type}`} title="Play" disabled={playingItemKey !== null} on:click={(e) => handleQuickPlay(e, item)}>
-                  {#if playingItemKey === `${item.id}-${item.media_type}`}
-                    <i class="ri-loader-4-line spin"></i>
-                  {:else}
-                    <i class="ri-play-fill"></i>
-                  {/if}
-                </button>
-                <button 
-                  class="action-btn" 
-                  title={myListItems.has(`${item.id}-${item.media_type}`) ? 'Remove from List' : 'Add to List'}
-                  on:click={(e) => toggleMyList(e, item)}
-                >
-                  <i class="{myListItems.has(`${item.id}-${item.media_type}`) ? 'ri-check-line' : 'ri-add-line'}"></i>
-                </button>
+          <div class="tile poster fluid" style:--card-accent={cardColors[itemKey] || null} on:click={() => openDetail(item)}>
+            <div class="tile-art">
+              {#if item.poster_path}
+                <img class="tile-image" src={getImageUrl(item.poster_path, 'w342')} alt={item.title || item.name} loading="lazy" decoding="async" />
+              {:else}
+                <div class="tile-image tile-placeholder"><i class="ri-film-line"></i></div>
+              {/if}
+            </div>
+            <div class="tile-shade"></div>
+
+            <div class="tile-corner">
+              <button class="tile-icon" class:active={inList} title={inList ? 'Remove from List' : 'Add to List'} on:click={(e) => toggleMyList(e, item)}>
+                <i class={inList ? 'ri-check-line' : 'ri-add-line'}></i>
+              </button>
+            </div>
+
+            <button class="tile-play" class:loading={playingItemKey === itemKey} title="Play" disabled={playingItemKey !== null} on:click={(e) => handleQuickPlay(e, item)}>
+              {#if playingItemKey === itemKey}
+                <i class="ri-loader-4-line spin"></i>
+              {:else}
+                <i class="ri-play-fill"></i>
+              {/if}
+            </button>
+
+            <div class="tile-text">
+              <h3 class="tile-title">{item.title || item.name}</h3>
+              <div class="tile-meta">
+                {#if item.release_date || item.first_air_date}
+                  <span>{formatDate(item.release_date || item.first_air_date)}</span>
+                {/if}
+                {#if item.vote_average > 0}
+                  <span class="tile-rating"><i class="ri-star-fill" style="color: {getRatingColor(item.vote_average)}"></i>{item.vote_average.toFixed(1)}</span>
+                {/if}
               </div>
             </div>
           </div>

@@ -82,8 +82,6 @@ export function prepareNola({ root = projectRoot, version, repository, check = f
   replace("src/lib/Updater.svelte", "https://api.github.com/repos/chwair/magnolia/releases/latest",
     `https://api.github.com/repos/${repository}/releases/latest`);
   replace("src/lib/Updater.svelte", "release.tag_name.replace('v', '')", "release.tag_name.replace(/^(?:nola-)?v/, '')");
-  // The font HTTP handler constructs this path without a Tauri AppHandle.
-  replace("src-tauri/src/torrent.rs", "com.chair.magnolia", branding.identifier);
   replace("src-tauri/src/main.rs", '"magnolia-installer.exe"', '"nola-installer.exe"');
 
   if (!check) {

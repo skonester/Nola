@@ -1,7 +1,9 @@
 import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
-// Mirror of current store value for synchronous getProgress/getEpisodeProgress reads
+// mirror of the backend's progress map, each entry carrying a `watched` flag.
+// the backend owns every rule, this only keeps a synchronous copy for the ui
 let _currentProgress = {};
 
 async function loadFromDisk() {
@@ -31,15 +33,21 @@ async function migrateFromLocalStorage() {
 }
 
 function createWatchProgressStore() {
-  const { subscribe, set, update } = writable({});
+  const { subscribe, set } = writable({});
 
   // Keep module-level mirror in sync for synchronous reads
   subscribe(val => { _currentProgress = val; });
 
+  async function reload() {
+    set(await loadFromDisk());
+  }
+
   async function init() {
     await migrateFromLocalStorage();
-    const progress = await loadFromDisk();
-    set(progress);
+    await reload();
+    listen('watch-state-changed', reload).catch(error => {
+      console.error('Failed to listen for watch state changes:', error);
+    });
   }
 
   init();
@@ -47,29 +55,13 @@ function createWatchProgressStore() {
   return {
     subscribe,
 
-    updateProgress: async (mediaId, mediaType, data) => {
-      const key = `${mediaId}-${mediaType}`;
-      const entry = { ...data, updatedAt: Date.now() };
-
-      // Update in-memory immediately so UI stays responsive
-      update(progress => {
-        const next = { ...progress, [key]: entry };
-        if (data.currentSeason && data.currentEpisode) {
-          const epKey = `${mediaId}-${mediaType}-S${data.currentSeason}-E${data.currentEpisode}`;
-          next[epKey] = entry;
-        }
-        return next;
-      });
-
+    // update: { mediaId, mediaType, season, episode, position, duration, completed, media }
+    recordProgress: async (update) => {
       try {
-        await invoke('update_watch_progress_entry', { key, value: entry });
-        if (data.currentSeason && data.currentEpisode) {
-          const epKey = `${mediaId}-${mediaType}-S${data.currentSeason}-E${data.currentEpisode}`;
-          await invoke('update_watch_progress_entry', { key: epKey, value: entry });
-        }
-        console.log('📊 Updated watch progress:', key, data);
+        return await invoke('record_watch_progress', { update });
       } catch (error) {
-        console.error('Failed to update watch progress:', error);
+        console.error('Failed to record watch progress:', error);
+        return null;
       }
     },
 
@@ -85,11 +77,6 @@ function createWatchProgressStore() {
 
     removeProgress: async (mediaId, mediaType) => {
       const key = `${mediaId}-${mediaType}`;
-      update(progress => {
-        const next = { ...progress };
-        delete next[key];
-        return next;
-      });
       try {
         await invoke('remove_watch_progress_entry', { key });
         console.log('🗑️ Removed watch progress:', key);
@@ -99,7 +86,6 @@ function createWatchProgressStore() {
     },
 
     clear: async () => {
-      set({});
       try {
         await invoke('clear_watch_progress');
         console.log('🗑️ All watch progress cleared');
@@ -108,10 +94,7 @@ function createWatchProgressStore() {
       }
     },
 
-    reload: async () => {
-      const progress = await loadFromDisk();
-      set(progress);
-    },
+    reload,
   };
 }
 
