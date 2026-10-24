@@ -34,6 +34,18 @@ Visit [Nola Releases](https://github.com/skonester/Nola/releases) for available 
 
 Experimental builds may be marked as prereleases. Check each release's notes for changes and known issues.
 
+### Linux: Wayland and X11
+
+The built-in player currently works on **Wayland** sessions only. On **X11**, opening a video or channel shows a blank window that looks transparent to the desktop. Until this is fixed, use a Wayland session (the default on most current GNOME and KDE desktops) or **Open in external player**. On Linux this needs mpv or VLC installed from your distribution, because the `.deb` does not include a standalone mpv.
+
+Notes for fixing it:
+
+- Video is drawn by `libsoia_utils` from the bundled [FengZeng/mpv](https://github.com/FengZeng/mpv) runtime, beneath the transparent webview. `main.rs` picks the embed mode from the window handle: Wayland uses mode 2, X11 (Xlib/Xcb) uses mode 1.
+- Mode 2 renders through mpv's render API into a `wl_subsurface` below the webview, so the UI composites over the video.
+- Mode 1 only passes mpv the window ID (`wid`). mpv and GTK then draw into the same X11 window, and GTK's transparent webview paints over the video. The Linux `libsoia_utils` has no X11 render-context path.
+- A likely fix is a separate X11 path: render with mpv's OpenGL render API into a GTK `GLArea` placed under the webview in a `GtkOverlay`, so GTK composites both layers itself.
+- This also affects upstream Magnolia, so check upstream and new FengZeng/mpv releases first.
+
 ## Building locally
 
 ### Prerequisites
