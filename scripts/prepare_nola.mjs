@@ -11,7 +11,7 @@ export function prepareNola({ root = projectRoot, version, repository, check = f
   const branding = JSON.parse(read("nola.json"));
   repository ??= branding.repository;
   const pkg = JSON.parse(read("package.json"));
-  version ??= pkg.version;
+  version ??= branding.version ?? pkg.version;
 
   // Use a numeric version supported by every installer; prerelease is a release flag.
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)

@@ -11,6 +11,7 @@
     "tauri:dev": "node ./scripts/run_tauri.mjs dev",
     "tauri:build": "node ./scripts/run_tauri.mjs build",
     "setup:libs": "node ./scripts/setup_runtime_libs.mjs",
+    "setup:vlc": "node ./scripts/setup_vlc_runtime.mjs",
     "setup:libs:mac:intel": "MPV_TARGET_ARCH=x86_64 node ./scripts/setup_runtime_libs.mjs --platform darwin",
     "sync:runtime": "node ./scripts/sync_runtime_libs.mjs",
     "sync:runtime:mac": "node ./scripts/sync_runtime_libs.mjs --platform darwin",
@@ -24,11 +25,11 @@
     "vite": "^8.0.13"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.9.0",
-    "@tauri-apps/plugin-dialog": "^2.4.2",
-    "@tauri-apps/plugin-fs": "^2.4.4",
-    "@tauri-apps/plugin-os": "^2.3.2",
-    "@tauri-apps/plugin-shell": "^2.0.0",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-dialog": "2.8.3",
+    "@tauri-apps/plugin-fs": "2.7.1",
+    "@tauri-apps/plugin-os": "2.4.0",
+    "@tauri-apps/plugin-shell": "2.5.0",
     "geist": "^1.7.1",
     "remixicon": "^4.7.0"
   }

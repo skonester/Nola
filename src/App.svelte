@@ -8,6 +8,7 @@
   import RecommendationsCarousel from "./lib/RecommendationsCarousel.svelte";
   import TorrentDebug from "./lib/TorrentDebug.svelte";
   import VideoPlayer from "./lib/VideoPlayer.svelte";
+  import VlcLivePlayer from "./lib/VlcLivePlayer.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import CacheManager from "./lib/CacheManager.svelte";
   import AboutModal from "./lib/AboutModal.svelte";
@@ -22,7 +23,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
   import { setupLogging } from "./lib/consoleLogger.js";
-  import { isLinux, isMacOS } from "./lib/utils/platform.js";
+  import { isLinux, isMacOS, isWindows } from "./lib/utils/platform.js";
   import { scrollHoverGuard } from "./lib/utils/scrollHoverGuard.js";
   import { HOME_ROWS } from "./lib/browseLists.js";
   
@@ -368,7 +369,11 @@
     />
   </div>
   {#if showVideoPlayer}
-    <VideoPlayer {...videoPlayerProps} on:close={closeVideoPlayer} on:back={backFromVideoPlayer} />
+    {#if videoPlayerProps?.live && isWindows}
+      <VlcLivePlayer {...videoPlayerProps} on:close={closeVideoPlayer} />
+    {:else}
+      <VideoPlayer {...videoPlayerProps} on:close={closeVideoPlayer} on:back={backFromVideoPlayer} />
+    {/if}
   {:else}
 
     <div class="content-scroll" id="main-content" class:blur={searchActive || settingsActive} use:scrollHoverGuard>

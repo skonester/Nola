@@ -477,6 +477,7 @@ async function main() {
   }
 
   syncRuntimeManifest();
+  runOrExit(process.execPath, [resolve(scriptDir, "setup_vlc_runtime.mjs")], "[ERROR] Failed to set up the bundled VLC Live TV runtime.");
   console.log(`[INFO] Windows runtime setup completed: ${runtimeDir}`);
 }
 

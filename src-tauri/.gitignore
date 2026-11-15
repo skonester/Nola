@@ -3,3 +3,4 @@
 
 # Build output of mpv-player/, copied here by run_tauri.mjs for bundling
 /libs/mpv/mpv.exe
+/libs/vlc/

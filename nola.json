@@ -1,5 +1,6 @@
 {
   "productName": "Nola",
+  "version": "2.3.6",
   "mainBinaryName": "nola",
   "identifier": "com.skonester.nola",
   "repository": "skonester/Nola"

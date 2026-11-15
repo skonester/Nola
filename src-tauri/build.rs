@@ -120,6 +120,10 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", mpv_lib_dir.display());
     if target_os == "windows" {
+        for file in ["libvlc.dll", "libvlccore.dll", "plugins/demux/libadaptive_plugin.dll"] {
+            assert!(PathBuf::from(&manifest_dir).join("libs/vlc").join(file).is_file(),
+                "Bundled VLC runtime is missing {file}. Run npm run setup:vlc before building Windows.");
+        }
         let link_name = windows_link_name.unwrap_or("mpv");
         println!("cargo:rustc-link-lib={}", link_name);
     } else {
@@ -195,6 +199,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../scripts/setup_runtime_libs_windows.mjs");
     println!("cargo:rerun-if-changed=../scripts/setup_runtime_libs.mjs");
     println!("cargo:rerun-if-changed=libs/mpv");
+    println!("cargo:rerun-if-changed=libs/vlc/runtime-source.json");
     println!("cargo:rerun-if-env-changed=TARGET");
 
     tauri_build::build();

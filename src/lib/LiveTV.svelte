@@ -7,6 +7,9 @@
   import { onMount, onDestroy, tick, createEventDispatcher } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+  import { listen } from "@tauri-apps/api/event";
+  import ChannelGuide from "./ChannelGuide.svelte";
+  import { channelKey, guideKey, migrateChannelList, indexGuide, nowAndNext, programmeTime, programmeProgress } from "./liveTvGuide.js";
 
   const dispatch = createEventDispatcher();
 
@@ -17,6 +20,7 @@
     { id: "plex", name: "Plex", color: "#e5a00d", regions: "us ca gb au fr mx nz es all" },
     { id: "samsungtvplus", name: "Samsung TV Plus", color: "#60a5fa", regions: "us ca gb de fr es it at ch in kr all" },
     { id: "roku", name: "The Roku Channel", color: "#a78bfa", regions: "all" },
+    { id: "tubi", name: "Tubi", color: "#facc15", regions: "all", regionLabel: "United States" },
   ].map((s) => ({ ...s, regions: s.regions.split(" ") }));
 
   const REGION_NAMES = {
@@ -35,6 +39,16 @@
   let loaded = false;
   let busy = null; // source id or "add" while a playlist is downloading
   let error = null;
+  let guide = { sources: [] };
+  let guideLoading = true;
+  let now = Date.now() / 1000;
+  let guideChannel = null;
+  let editingEpgId = null;
+  let epgDraft = "";
+  let clock;
+  let unlisten;
+  let destroyed = false;
+  let reloadVersion = 0;
 
   let showSources = false;
   let search = saved.search;
@@ -70,6 +84,19 @@
   function apply(data) {
     sources = data.sources || [];
     channels = data.channels || [];
+    favorites = migrateChannelList(favorites, channels);
+    recent = migrateChannelList(recent, channels);
+    writeList("liveTvFavorites", favorites);
+    writeList("liveTvRecent", recent);
+  }
+
+  async function reload() {
+    const version = ++reloadVersion;
+    const [data, listings] = await Promise.all([invoke("get_live_channels"), invoke("get_live_guide")]);
+    if (destroyed || version !== reloadVersion) return;
+    apply(data);
+    guide = listings;
+    guideLoading = false;
   }
 
   async function run(tag, action) {
@@ -78,6 +105,7 @@
     error = null;
     try {
       apply(await action());
+      guide = await invoke("get_live_guide");
       return true;
     } catch (e) {
       error = String(e);
@@ -121,10 +149,22 @@
     }
   }
 
+  function editEpg(source) {
+    editingEpgId = source.id;
+    epgDraft = source.epg_url || "";
+  }
+
+  async function saveEpg(source) {
+    if (await run(source.id, () => invoke("set_live_epg_source", { id: source.id, location: epgDraft }))) {
+      editingEpgId = null;
+    }
+  }
+
   function toggleFavorite(channel) {
-    favorites = favorites.includes(channel.url)
-      ? favorites.filter((u) => u !== channel.url)
-      : [channel.url, ...favorites];
+    const key = channelKey(channel);
+    favorites = favorites.includes(key)
+      ? favorites.filter((u) => u !== key)
+      : [key, ...favorites];
     writeList("liveTvFavorites", favorites);
   }
 
@@ -133,14 +173,17 @@
       search, category, sourceFilter, visibleCount,
       scrollTop: document.getElementById("main-content")?.scrollTop || 0,
     };
-    recent = [channel.url, ...recent.filter((u) => u !== channel.url)].slice(0, RECENT_LIMIT);
+    const key = channelKey(channel);
+    recent = [key, ...recent.filter((u) => u !== key)].slice(0, RECENT_LIMIT);
     writeList("liveTvRecent", recent);
-    const lineup = list.map((c) => ({ name: c.name, url: c.url, logo: c.logo }));
+    const lineup = list.map((c) => ({ name: c.name, url: c.url, logo: c.logo, source_id: c.source_id, tvg_id: c.tvg_id }));
     window.dispatchEvent(new CustomEvent("openVideoPlayer", {
       detail: {
         src: channel.url,
         title: channel.name,
         channelLogo: channel.logo,
+        channelSourceId: channel.source_id,
+        channelTvgId: channel.tvg_id,
         live: true,
         channels: lineup,
         channelIndex: lineup.findIndex((c) => c.url === channel.url),
@@ -166,11 +209,15 @@
   $: addedLocations = new Set(sources.map((s) => s.location));
   $: sourceNames = Object.fromEntries(sources.map((s) => [s.id, s.name]));
   $: countBySource = channels.reduce((m, c) => ((m[c.source_id] = (m[c.source_id] || 0) + 1), m), {});
+  $: guideIndex = indexGuide(guide);
+  $: guideSources = Object.fromEntries(guide.sources.map((s) => [s.source_id, s]));
+  $: onAir = new Map(channels.map((c) => [guideKey(c), nowAndNext(guideIndex.get(guideKey(c)), now)]));
   $: scoped = sourceFilter ? channels.filter((c) => c.source_id === sourceFilter) : channels;
   $: groups = [...scoped.reduce((m, c) => m.set(c.group, (m.get(c.group) || 0) + 1), new Map())]
     .sort((a, b) => a[0].localeCompare(b[0]));
-  $: favoriteChannels = favorites.map((u) => scoped.find((c) => c.url === u)).filter(Boolean);
-  $: recentChannels = recent.map((u) => scoped.find((c) => c.url === u)).filter(Boolean);
+  $: scopedByKey = new Map(scoped.map((c) => [channelKey(c), c]));
+  $: favoriteChannels = favorites.map((u) => scopedByKey.get(u)).filter(Boolean);
+  $: recentChannels = recent.map((u) => scopedByKey.get(u)).filter(Boolean);
   $: if (loaded && category && !(
       category === FAVORITES ? favoriteChannels.length
       : category === RECENT ? recentChannels.length
@@ -187,13 +234,17 @@
   $: if (sentinel && observer) { observer.disconnect(); observer.observe(sentinel); }
 
   onMount(async () => {
+    clock = setInterval(() => (now = Date.now() / 1000), 30_000);
+    listen("live-tv-updated", () => reload().catch((e) => (error = String(e))))
+      .then((stop) => { if (destroyed) stop(); else unlisten = stop; })
+      .catch((e) => (error = String(e)));
     observer = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting) && visibleCount < filtered.length) {
         visibleCount += PAGE_SIZE;
       }
     }, { root: document.getElementById("main-content"), rootMargin: "600px" });
     try {
-      apply(await invoke("get_live_channels"));
+      await reload();
     } catch (e) {
       error = String(e);
     }
@@ -208,7 +259,12 @@
     }
   });
 
-  onDestroy(() => observer?.disconnect());
+  onDestroy(() => {
+    destroyed = true;
+    observer?.disconnect();
+    clearInterval(clock);
+    unlisten?.();
+  });
 </script>
 
 <div class="live-tv">
@@ -267,7 +323,7 @@
                   {/each}
                 </select>
               {:else}
-                <span class="region-fixed">{REGION_NAMES[service.regions[0]]}</span>
+                <span class="region-fixed">{service.regionLabel || REGION_NAMES[service.regions[0]]}</span>
               {/if}
               <button class="add-btn" disabled={!!busy || addedLocations.has(location)} on:click={() => addService(service)}>
                 {#if addedLocations.has(location)}
@@ -301,17 +357,33 @@
               <div class="source-info">
                 <span class="source-name">{source.name}</span>
                 <span class="source-meta">{(countBySource[source.id] || 0).toLocaleString()} channels · {updatedLabel(source.updated_at)}</span>
+                <span class="source-meta">Guide: {source.epg_url ? "Custom XMLTV feed" : source.epg_urls?.length ? "From playlist" : "No feed configured"}{#if guideSources[source.id]?.updated_at} · {updatedLabel(guideSources[source.id].updated_at)}{/if}</span>
+                {#if source.error}<span class="source-warning" role="status">{source.error} Saved channels are still available.</span>{/if}
+                {#if guideSources[source.id]?.error}<span class="source-warning" role="status">{guideSources[source.id].error}</span>{/if}
               </div>
+              <button class="icon-btn small" disabled={!!busy} on:click={() => editEpg(source)} aria-label="Configure program guide for {source.name}" title="Program guide feed"><i class="ri-calendar-schedule-line"></i></button>
               <button class="icon-btn small" disabled={!!busy} on:click={() => refreshSource(source)} aria-label="Refresh {source.name}" title="Refresh">
                 <i class="ri-refresh-line" class:spin={busy === source.id}></i>
               </button>
               <button class="icon-btn small danger" disabled={!!busy} on:click={() => removeSource(source)} aria-label="Remove {source.name}" title="Remove">
                 <i class="ri-delete-bin-line"></i>
               </button>
+              {#if editingEpgId === source.id}
+                <form class="epg-form" on:submit|preventDefault={() => saveEpg(source)}>
+                  <label for="epg-{source.id}">XMLTV feed URL or file path (.xml or .xml.gz)</label>
+                  <div class="epg-row">
+                    <input id="epg-{source.id}" class="text-input url" type="text" placeholder="Use the feed from the playlist" bind:value={epgDraft} />
+                    <button class="add-btn" type="submit" disabled={!!busy}>{busy === source.id ? "Loading…" : "Save feed"}</button>
+                    <button class="add-btn ghost" type="button" disabled={!!busy} on:click={() => (editingEpgId = null)}>Cancel</button>
+                  </div>
+                  <span class="source-meta">Leave blank to use the playlist's guide. XMLTV channel IDs must match the playlist's tvg-id values.</span>
+                </form>
+              {/if}
             </li>
           {/each}
         </ul>
       {/if}
+      <p class="refresh-note">Channels refresh automatically every 24 hours; program guides every 4 hours while Nola is running. Saved channels and listings stay available offline.</p>
       <p class="attribution">Featured lineups come from the community-maintained <em>app-m3u-generator</em> project and are not affiliated with the listed services.</p>
     </section>
   {/if}
@@ -373,6 +445,7 @@
     {:else}
       <div class="channel-grid">
         {#each shown as channel (channel.source_id + channel.url)}
+          {@const listings = onAir.get(guideKey(channel)) || {}}
           <div class="channel-card">
             <button class="channel-main" on:click={() => play(channel, filtered)}>
               <div class="logo-box">
@@ -390,12 +463,22 @@
             </button>
             <button
               class="fav-btn"
-              class:on={favorites.includes(channel.url)}
+              class:on={favorites.includes(channelKey(channel))}
               on:click={() => toggleFavorite(channel)}
-              aria-label={favorites.includes(channel.url) ? `Remove ${channel.name} from favorites` : `Add ${channel.name} to favorites`}
-              aria-pressed={favorites.includes(channel.url)}
+              aria-label={favorites.includes(channelKey(channel)) ? `Remove ${channel.name} from favorites` : `Add ${channel.name} to favorites`}
+              aria-pressed={favorites.includes(channelKey(channel))}
             >
-              <i class={favorites.includes(channel.url) ? "ri-star-fill" : "ri-star-line"}></i>
+              <i class={favorites.includes(channelKey(channel)) ? "ri-star-fill" : "ri-star-line"}></i>
+            </button>
+            <button class="channel-programme" on:click={() => (guideChannel = channel)} aria-label="Program guide for {channel.name}">
+              {#if listings.current}
+                <span class="programme-title"><span class="now-label">Now</span> {listings.current.title}</span>
+                <progress max="100" value={programmeProgress(listings.current, now)} aria-label="Current program progress"></progress>
+              {/if}
+              {#if listings.next}
+                <span class="programme-next">{programmeTime(listings.next.start)} · {listings.next.title}</span>
+              {/if}
+              <span class="guide-link"><i class="ri-calendar-schedule-line"></i> {listings.current || listings.next ? "Full guide" : "Program guide"}</span>
             </button>
           </div>
         {/each}
@@ -414,6 +497,19 @@
     </div>
   {/if}
 </div>
+
+{#if guideChannel}
+  <ChannelGuide
+    channel={guideChannel}
+    programmes={guideIndex.get(guideKey(guideChannel)) || []}
+    {now}
+    loading={guideLoading}
+    error={guideSources[guideChannel.source_id]?.error || ""}
+    hasFeed={!!guideSources[guideChannel.source_id]?.urls?.length}
+    on:close={() => (guideChannel = null)}
+    on:play={() => { const channel = guideChannel; guideChannel = null; play(channel, filtered); }}
+  />
+{/if}
 
 <style>
   .live-tv {
@@ -613,6 +709,7 @@
   }
   .source-item {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     padding: 8px 8px 8px 14px;
@@ -622,6 +719,11 @@
   .source-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .source-name { font-size: 13px; font-weight: 500; }
   .source-meta { font-size: 12px; color: var(--text-tertiary); }
+  .source-warning { font-size: 12px; color: #fbbf24; overflow-wrap: anywhere; }
+  .epg-form { width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
+  .epg-form label { font-size: 12px; color: var(--text-secondary); }
+  .epg-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .refresh-note { margin: 16px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
 
   .attribution { margin: var(--spacing-lg) 0 0; font-size: 11px; color: var(--text-tertiary); }
 
@@ -696,6 +798,13 @@
   }
 
   .channel-card { position: relative; }
+  .channel-programme { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px; padding: 10px; box-sizing: border-box; text-align: left; border: 1px solid #ffffff0a; border-radius: 8px; background: #ffffff03; color: var(--text-secondary); cursor: pointer; font: inherit; }
+  .channel-programme:hover { background: #ffffff09; border-color: #ffffff20; }
+  .programme-title, .programme-next { display: block; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+  .programme-next { font-size: 11px; color: var(--text-tertiary); }
+  .now-label { color: var(--accent-color); font-size: 10px; margin-right: 4px; }
+  .guide-link { font-size: 10px; color: var(--text-tertiary); }
+  .channel-programme progress { width: 100%; height: 2px; accent-color: var(--accent-color); }
 
   .channel-main {
     width: 100%;
@@ -779,7 +888,7 @@
   .fav-btn {
     position: absolute;
     right: 0;
-    bottom: 4px;
+    top: 8px;
     width: 28px;
     height: 28px;
     display: flex;
@@ -787,7 +896,7 @@
     justify-content: center;
     border: none;
     border-radius: 50%;
-    background: none;
+    background: rgba(0, 0, 0, 0.65);
     color: var(--text-tertiary);
     font-size: 16px;
     cursor: pointer;

@@ -35,6 +35,8 @@ chrono = "0.4"
 axum = "0.8"
 url = "2"
 regex = "1.10"
+quick-xml = "0.37"
+flate2 = "1"
 aes = "0.8"
 cbc = "0.1"
 base64 = "0.22"
@@ -50,6 +52,9 @@ tauri-plugin-os = "2.3.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+libloading = "0.7"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.1"

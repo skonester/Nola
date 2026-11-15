@@ -10,6 +10,7 @@
 import { getSeasonDetails, getTVDetails, getImageUrl } from "./tmdb.js";
   import { randomSubtitlePreviewBackground } from "./subtitlePreviewBackgrounds.js";
   import { isWindows } from "./utils/platform.js";
+  import LiveProgramme from "./LiveProgramme.svelte";
 
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
@@ -32,6 +33,8 @@ import { getSeasonDetails, getTVDetails, getImageUrl } from "./tmdb.js";
   // list the channel was picked from, so the player can step through it.
   export let live = false;
   export let channelLogo = "";
+  export let channelSourceId = "";
+  export let channelTvgId = "";
   export let channels = [];
   export let channelIndex = -1;
 
@@ -721,6 +724,8 @@ let currentSkipSection = null;
         src: channel.url,
         title: channel.name,
         channelLogo: channel.logo,
+        channelSourceId: channel.source_id,
+        channelTvgId: channel.tvg_id,
         live: true,
         channels,
         channelIndex: index,
@@ -2555,6 +2560,7 @@ let currentSkipSection = null;
         <span class="player-title-sub">S{String(seasonNum).padStart(2,'0')}E{String(episodeNum).padStart(2,'0')}</span>
       {:else if live}
         <span class="player-title-sub">Live TV{#if channels.length > 1 && channelIndex >= 0} &bull; {channelIndex + 1} of {channels.length}{/if}</span>
+        <LiveProgramme sourceId={channelSourceId} tvgId={channelTvgId} />
       {/if}
     </div>
   </div>

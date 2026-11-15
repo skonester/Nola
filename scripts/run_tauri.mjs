@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyRuntime } from "./vlc_runtime.mjs";
 
 const filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(filename);
@@ -127,6 +128,13 @@ if (tauriSubcommand === "build" && process.platform === "win32" && !hasUserConfi
 // (via a gitignored copy in libs/mpv) for builds. It links the bundled libmpv.
 if (isDevOrBuild && process.platform === "win32") {
   const profile = isDev || tauriArgs.includes("--debug") ? "debug" : "release";
+  runNodeScriptOrExit([resolve(scriptDir, "setup_vlc_runtime.mjs")]);
+  copyRuntime(
+    resolve(runtimeLibsDir, "vlc"),
+    resolve(projectRoot, "src-tauri", "target", profile, "vlc"),
+    resolve(projectRoot, "src-tauri", "target")
+  );
+  if (!isDev) tauriArgs.push("--config", resolve(projectRoot, "src-tauri", "tauri.vlc.windows.json"));
   const cargoArgs = ["build", "--manifest-path", mpvPlayerManifestPath];
   if (profile === "release") cargoArgs.push("--release");
   const result = spawnSync("cargo", cargoArgs, { cwd: projectRoot, stdio: "inherit" });

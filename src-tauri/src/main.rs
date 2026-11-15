@@ -7,7 +7,12 @@ mod mpv;
 mod logger;
 mod updater;
 mod live_channels;
+mod live_epg;
 mod live_proxy;
+#[cfg(target_os = "windows")]
+mod vlc;
+#[cfg(target_os = "windows")]
+mod vlc_frames;
 
 use magnolia_core::Core;
 use std::sync::{Arc, Mutex};
@@ -622,6 +627,8 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let app_handle = app.handle();
+            #[cfg(target_os = "windows")]
+            app.manage(vlc::VlcState::default());
             let app_data_dir = app_handle
                 .path()
                 .app_data_dir()
@@ -640,6 +647,8 @@ fn main() {
                 .expect("failed to initialize magnolia core");
             let core = Arc::new(core);
             app.manage(core.clone());
+
+            live_channels::start_refresh(app_handle.clone());
 
             let anime_list = core.anime_list.clone();
             tauri::async_runtime::spawn(async move {
@@ -896,10 +905,24 @@ fn main() {
             open_external_url,
             set_traffic_lights_visible,
             live_channels::get_live_channels,
+            live_channels::get_live_guide,
+            live_channels::get_live_programmes,
+            live_channels::refresh_live_data,
+            live_channels::set_live_epg_source,
             live_channels::add_live_source,
             live_channels::refresh_live_source,
             live_channels::remove_live_source,
             live_proxy::live_stream_url,
+            #[cfg(target_os = "windows")]
+            vlc::vlc_load,
+            #[cfg(target_os = "windows")]
+            vlc::vlc_status,
+            #[cfg(target_os = "windows")]
+            vlc::vlc_frame,
+            #[cfg(target_os = "windows")]
+            vlc::vlc_control,
+            #[cfg(target_os = "windows")]
+            vlc::vlc_stop,
             load_file,
             cycle_pause,
             seek_video,

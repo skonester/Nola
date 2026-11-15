@@ -41,7 +41,7 @@ for upstream syncing and still builds Magnolia when run.
 
 ## Branding and local builds
 
-`nola.json` defines the product name, executable name, stable app identifier,
+`nola.json` defines the Nola version, product name, executable name, stable app identifier,
 and default repository. `scripts/prepare_nola.mjs` applies these settings to the
 Tauri configuration, visible About/onboarding text, HTML title, app-data font
 path, and updater. CI sets the update repository to the current GitHub fork.
@@ -58,7 +58,7 @@ node --test scripts/prepare_nola.test.mjs
 For a local Nola build, use a disposable checkout, run
 `node scripts/prepare_nola.mjs`, then follow upstream's dependency/runtime setup
 and `npm run tauri:build` instructions. Preparation defaults to the current
-package version and `skonester/Nola`; override these with `NOLA_VERSION` and
+Nola version in `nola.json` and `skonester/Nola`; override these with `NOLA_VERSION` and
 `NOLA_REPOSITORY` environment variables. The script intentionally edits tracked
 files in that checkout: do not commit the generated changes. Ordinary upstream
 build commands without preparation still build Magnolia.
@@ -66,6 +66,26 @@ build commands without preparation still build Magnolia.
 The source archives attached automatically by GitHub also contain upstream
 branding; run the preparation script with the release's `NOLA_VERSION` before
 building them to reproduce Nola branding and versioning.
+
+### Bundled VLC for Windows Live TV
+
+Windows builds also carry VideoLAN's official VLC 3.0.24 x64 runtime. The
+version, archive URL, SHA-256 digest, and corresponding source archive are
+pinned in `scripts/vlc_runtime.mjs`. `npm run setup:libs` and the Windows
+`run_tauri.mjs` build/dev wrapper install it automatically at build time.
+`npm run setup:vlc` installs only VLC; add `-- --check` to verify it.
+For an offline build, set `VLC_ARCHIVE_PATH` to the exact pinned official ZIP.
+
+The complete DLL/plugin hierarchy, license notices, and a provenance manifest
+are staged under `src-tauri/libs/vlc` (ignored by Git), copied to `target/<profile>/vlc`
+for development, and embedded at `vlc/` in the Windows installation using
+`tauri.vlc.windows.json`. Plugins must retain their subdirectories. Each DLL
+is checked against the extracted inventory and x64 PE architecture before
+bundling. Missing runtimes fail the Windows build; the installed app never
+searches PATH, prompts users for DLLs, or downloads a runtime at launch.
+
+The VLC player currently targets Windows x64. Other platform builds retain
+mpv, and the VLC files are not included in their packages.
 
 ## Syncing Magnolia
 
